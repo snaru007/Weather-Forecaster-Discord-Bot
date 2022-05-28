@@ -1,12 +1,14 @@
-# Code for the weather forecaster discord bot
+# Code for the weather forecaster discord bot using openweathermap
 import os
 import discord
 import requests
 from dotenv import load_dotenv
 
-#code for connecting the bot to discord
+#code for connecting the bot to discord and getting the weather api key
 load_dotenv()
 token = os.getenv('DISCORD_TOKEN')
+api_key = os.getenv('API_KEY')
+base_url = 'http://api.openweathermap.org/data/2.5/weather?appid=' + api_key + '&units=imperial&q='
 
 client = discord.Client()
 
@@ -14,9 +16,9 @@ client = discord.Client()
 async def on_ready():
     print(f'{client.user} has connected to discord.')
 
+
 @client.event
 async def on_message(message):
-    print(message)
     if message.author == client.user:
         return
 
@@ -25,29 +27,54 @@ async def on_message(message):
     #checks if message is a valid command
     if(command != '/weather'):
         return
-    #parses message
-    args = m_list[1].rsplit(' ', 1)
-    city = args[0]
-    state = args[1]
-    
-    print('Forecasting weather for:')
-    print('City: ', city)
-    print('State: ', state)
-    print('In progress...')
+    #parses message, checks for both space and comma delimiters
+    args = m_list[1].split(',')
+    argString = ''
+    if(len(args) < 3):
+        arg_string = m_list[1].replace(' ', ',')
+    else:
+        arg_string = m_list[1]
+
+    args = arg_string.split(',')
+    city = args[0].capitalize()
+    state = args[1].upper()
+    country = args[2].upper()
+
+    print('Forecasting weather for ', arg_string, '...')
 
     #api request
-    url = 'https://wttr.in/{},{}'.format(city, state)
+    url = base_url + arg_string
     response = requests.get(url)  
     print('Forecasting complete.')
-    print(response)
+    #creates the embed response
+    print('Generating embed...')
 
-    #due to discord message character limits, just grabs the current weather
-    #and appends the rest of the forecast via a url
-    weather = response.text.split('─', 1)[0]
-    forecast = '\nFor the rest of the forecast, please visit {}.'.format(url)
-    responseMessage = '```' + weather + '```' + forecast
-    #sends back response
-    await message.channel.send(responseMessage)
-    
+    #gets the current discord channel
+    channel = message.channel
+
+    #parses out current weather info
+    json_res = response.json()
+    if(json_res['cod'] != '404'):
+        async with channel.typing():
+            weather = json_res['main']
+            #temp is in fahrenheit as specified in the base_url at the top in the units parameter
+            current_temp = weather['temp']
+            current_humidity = weather['humidity']
+            description = json_res['weather'][0]['description']
+
+            #formats weather info in discord embed
+            embed = discord.Embed(title=f'Weather in {city}, {state}, {country}', color=message.guild.me.top_role.color, timestamp=message.created_at)
+            embed.add_field(name='Description', value=f'**{description}**', inline=False)
+            embed.add_field(name='Temperature (F)', value=f'**{current_temp}**', inline=False)
+            embed.add_field(name='Humidity (%)', value=f'**{current_humidity}**', inline=False)
+
+            embed.set_thumbnail(url=f'http://flags.ox3.in/svg/{country}/{state}.svg')
+            embed.set_footer(text=f'Requested by {message.author.name}')
+            print('Embed created.')
+    #sends back the response message embed or a failure message
+        await channel.send(embed=embed)
+    else:
+        await channel.send('Could not determine specified location.')
+
 
 client.run(token)
