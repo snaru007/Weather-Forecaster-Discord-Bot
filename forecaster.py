@@ -3,6 +3,8 @@ import os
 import discord
 import requests
 from dotenv import load_dotenv
+from svglib.svglib import svg2rlg
+from reportlab.graphics import renderPM
 
 #code for connecting the bot to discord and getting the weather api key
 load_dotenv()
@@ -68,11 +70,18 @@ async def on_message(message):
             embed.add_field(name='Temperature (F)', value=f'**{current_temp}**', inline=False)
             embed.add_field(name='Humidity (%)', value=f'**{current_humidity}**', inline=False)
 
-            embed.set_thumbnail(url=f'http://flags.ox3.in/svg/{country}/{state}.svg')
+            svg_content = requests.get(f'http://flags.ox3.in/svg/{country.lower()}/{state.lower()}.svg').text
+            with open('svg_buffer.svg', 'w') as file:
+                file.write(svg_content)
+
+            drawing = svg2rlg('svg_buffer.svg')
+            renderPM.drawToFile(drawing, 'png_buffer.png', fmt='PNG')
+            file = discord.File("png_buffer.png", filename="thumbnail.png")
+            embed.set_thumbnail(url='attachment://thumbnail.png')
             embed.set_footer(text=f'Requested by {message.author.name}')
             print('Embed created.')
     #sends back the response message embed or a failure message
-        await channel.send(embed=embed)
+        await channel.send(file=file, embed=embed)
     else:
         await channel.send('Could not determine specified location.')
 
